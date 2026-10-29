@@ -1,0 +1,112 @@
+-- TP3 : Contrôle d'accès à la base de données
+-- Remplacer <CDB> et mdp par vos valeurs
+
+-- 1 à 3 (en SYSTEM)
+CONNECT SYSTEM/mdp@//localhost:1521/AGRICOLPDB
+
+CREATE TABLESPACE agricolTBS
+DATAFILE '/u01/app/oracle/oradata/<CDB>/AGRICOLPDB/agricolTBS.dbf'
+SIZE 50M AUTOEXTEND ON NEXT 10M MAXSIZE 500M;
+
+CREATE TEMPORARY TABLESPACE agricolTempTBS
+TEMPFILE '/u01/app/oracle/oradata/<CDB>/AGRICOLPDB/agricolTemp.dbf'
+SIZE 20M;
+
+CREATE USER DBAGRICOL IDENTIFIED BY mdp
+DEFAULT TABLESPACE agricolTBS
+TEMPORARY TABLESPACE agricolTempTBS
+QUOTA UNLIMITED ON agricolTBS;
+GRANT ALL PRIVILEGES TO DBAGRICOL WITH ADMIN OPTION;
+
+-- 4. En DBAGRICOL
+CONNECT DBAGRICOL/mdp@//localhost:1521/AGRICOLPDB
+@TP1.SQL
+
+CREATE USER Admin IDENTIFIED BY mdp
+DEFAULT TABLESPACE agricolTBS
+TEMPORARY TABLESPACE agricolTempTBS;
+
+SELECT tablespace_name FROM dba_tablespaces WHERE tablespace_name LIKE 'AGRICOL%';
+SELECT username, default_tablespace, temporary_tablespace
+FROM dba_users WHERE username IN ('DBAGRICOL','ADMIN');
+SELECT table_name FROM dba_tables WHERE owner = 'DBAGRICOL';
+
+-- 5. Connexion Admin : ORA-01045 (pas de CREATE SESSION)
+-- 6.
+GRANT CREATE SESSION TO Admin;
+
+-- 7.
+GRANT CREATE TABLE, CREATE USER TO Admin;
+ALTER USER Admin QUOTA UNLIMITED ON agricolTBS;
+SELECT privilege FROM dba_sys_privs WHERE grantee = 'ADMIN';
+
+-- 8. En Admin : ORA-00942
+-- SELECT * FROM DBAGRICOL.AGRICULTEUR;
+
+-- 9.
+GRANT SELECT ON AGRICULTEUR TO Admin;
+
+-- 10. Vue AGRI_PROD
+GRANT CREATE VIEW TO Admin;
+GRANT SELECT ON LOT_PRODUCTION TO Admin;
+GRANT SELECT ON PRODUIT_ALIMENTAIRE TO Admin;
+-- En Admin :
+-- CREATE VIEW AGRI_PROD AS
+-- SELECT ag.nom AS agriculteur, p.nom AS produit
+-- FROM DBAGRICOL.Agriculteur ag
+-- JOIN DBAGRICOL.Lot_Production l ON ag.agriculteur_id = l.agriculteur_id
+-- JOIN DBAGRICOL.Produit_Alimentaire p ON l.produit_id = p.produit_id;
+
+-- 11. En Admin : ORA-01031
+-- CREATE INDEX NAMEPROD_IX ON DBAGRICOL.Produit_Alimentaire(nom);
+
+-- 12.
+GRANT INDEX ON Produit_Alimentaire TO Admin;
+-- En Admin : CREATE INDEX NAMEPROD_IX ON DBAGRICOL.Produit_Alimentaire(nom);
+
+-- 13.
+SELECT * FROM dba_sys_privs  WHERE grantee = 'ADMIN';
+SELECT * FROM dba_tab_privs  WHERE grantee = 'ADMIN';
+SELECT * FROM dba_role_privs WHERE grantee = 'ADMIN';
+
+-- 14.
+REVOKE CREATE TABLE, CREATE USER, CREATE VIEW FROM Admin;
+REVOKE SELECT ON DBAGRICOL.AGRICULTEUR FROM Admin;
+REVOKE SELECT ON DBAGRICOL.LOT_PRODUCTION FROM Admin;
+REVOKE SELECT ON DBAGRICOL.PRODUIT_ALIMENTAIRE FROM Admin;
+REVOKE INDEX ON DBAGRICOL.Produit_Alimentaire FROM Admin;
+-- CREATE SESSION est gardé pour pouvoir se reconnecter
+
+-- 15.
+SELECT * FROM dba_sys_privs WHERE grantee = 'ADMIN';
+SELECT * FROM dba_tab_privs WHERE grantee = 'ADMIN';
+
+-- 16. Profil
+CREATE PROFILE AGRICOL_Profil LIMIT
+  SESSIONS_PER_USER        3
+  CPU_PER_CALL             3500
+  CONNECT_TIME             90
+  LOGICAL_READS_PER_CALL   1200
+  PRIVATE_SGA              25K
+  IDLE_TIME                30
+  FAILED_LOGIN_ATTEMPTS    5
+  PASSWORD_LIFE_TIME       50
+  PASSWORD_REUSE_TIME      40
+  PASSWORD_REUSE_MAX       UNLIMITED
+  PASSWORD_LOCK_TIME       1
+  PASSWORD_GRACE_TIME      5;
+
+-- 17.
+ALTER USER Admin PROFILE AGRICOL_Profil;
+SELECT username, profile FROM dba_users WHERE username = 'ADMIN';
+
+-- 18. Rôle (la table PRODUCTION de l'énoncé = LOT_PRODUCTION)
+CREATE ROLE MARCHE_MANAGER;
+GRANT SELECT ON AGRICULTEUR TO MARCHE_MANAGER;
+GRANT SELECT ON LOT_PRODUCTION TO MARCHE_MANAGER;
+GRANT UPDATE ON MARCHE TO MARCHE_MANAGER;
+
+-- 19.
+GRANT MARCHE_MANAGER TO Admin;
+SELECT * FROM dba_role_privs WHERE grantee = 'ADMIN';
+SELECT * FROM dba_tab_privs  WHERE grantee = 'MARCHE_MANAGER';
